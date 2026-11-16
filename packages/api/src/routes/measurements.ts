@@ -2,9 +2,15 @@ import type { Group } from '@kerf/shared';
 import { Router } from 'express';
 
 import type { Db } from '../db';
-import { type MeasurementRow, toMeasurement } from '../rows';
+import type { Hub } from '../hub';
+import { FEED_SELECT, type FeedRow, type MeasurementRow, toFeedItem, toMeasurement } from '../rows';
 
-export function measurementsRouter(db: Db) {
+// keep labels and values within a normal size so bad clients cannot send huge data
+const MAX_VALUE_MM = 1_000_000;
+const MAX_LABEL_LENGTH = 200;
+const MAX_DEVICE_ID_LENGTH = 64;
+
+export function measurementsRouter(db: Db, hub: Hub) {
   const router = Router();
 
   const findProjectForUser = db.prepare(`
@@ -31,6 +37,7 @@ export function measurementsRouter(db: Db) {
     VALUES (?, ?, ?, ?, ?, ?)
     RETURNING *
   `);
+  const findFeedItem = db.prepare(`${FEED_SELECT} WHERE m.id = ?`);
 
   router.get('/projects/:id/measurements', (req, res) => {
     const projectId = Number(req.params.id);
@@ -56,22 +63,30 @@ export function measurementsRouter(db: Db) {
       return;
     }
     const { value, label, deviceId } = req.body ?? {};
-    if (!Number.isInteger(value) || value <= 0) {
-      res.status(400).json({ error: 'value must be a positive integer' });
+    if (!Number.isInteger(value) || value <= 0 || value > MAX_VALUE_MM) {
+      res.status(400).json({ error: 'value must be a positive whole number of millimeters' });
       return;
     }
     if (typeof label !== 'string' || !label.trim()) {
       res.status(400).json({ error: 'label is required' });
       return;
     }
+    if (label.trim().length > MAX_LABEL_LENGTH) {
+      res.status(400).json({ error: `label must be at most ${MAX_LABEL_LENGTH} characters` });
+      return;
+    }
     const row = insertMeasurement.get(
       groupId,
       value,
       label.trim(),
-      typeof deviceId === 'string' ? deviceId : 'unknown',
+      typeof deviceId === 'string' && deviceId.trim()
+        ? deviceId.trim().slice(0, MAX_DEVICE_ID_LENGTH)
+        : 'unknown',
       Date.now(),
       req.userId,
     ) as unknown as MeasurementRow;
+    // publish here so app, curl, and other tools all show up live
+    hub.publish(toFeedItem(findFeedItem.get(row.id) as unknown as FeedRow));
     res.status(201).json(toMeasurement(row));
   });
 

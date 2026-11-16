@@ -2,8 +2,8 @@ import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { createApp } from './app';
 import { openDb } from './db';
+import { createServer } from './server';
 
 const PORT = Number(process.env.PORT ?? 4000);
 const DB_PATH =
@@ -12,7 +12,9 @@ const DB_PATH =
 mkdirSync(dirname(DB_PATH), { recursive: true });
 const db = openDb(DB_PATH);
 
-const server = createApp(db).listen(PORT, () => {
+const { server } = createServer(db);
+
+server.listen(PORT, () => {
   console.log(`Kerf API listening on http://localhost:${PORT}`);
 });
 

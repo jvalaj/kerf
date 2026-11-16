@@ -23,9 +23,7 @@ export interface Session {
 
 export type Sessions = ReturnType<typeof createSessions>;
 
-// the database stores a hash of each session token, never the token, so someone who reads the
-// database can't use what they find to sign in. a fast hash is fine here: tokens are long and
-// random, so there's nothing to guess. (passwords are guessable, which is why they get scrypt.)
+// store hash of token only, so a stolen database cannot be used to sign in
 function hashToken(token: string) {
   return createHash('sha256').update(token).digest('hex');
 }
@@ -50,7 +48,8 @@ export function createSessions(db: Db) {
     find(token: unknown): Session | undefined {
       if (typeof token !== 'string' || !token) return undefined;
       const row = find.get(hashToken(token)) as
-        { sessionId: number; id: number; name: string; username: string } | undefined;
+        | { sessionId: number; id: number; name: string; username: string }
+        | undefined;
       if (!row) return undefined;
       return {
         sessionId: row.sessionId,
@@ -66,8 +65,7 @@ export function createSessions(db: Db) {
 export function requireUser(sessions: Sessions) {
   return (req: Request, res: Response, next: NextFunction) => {
     const header = req.get('authorization') ?? '';
-    // fix: this used to compare the header against a fixed token stored as plain text in the
-    // users table. it now looks up a session created by signing in.
+    // look up session from the bearer token
     const match = /^Bearer\s+(.+)$/i.exec(header);
     const session = sessions.find(match?.[1]);
     if (!session) {
@@ -81,17 +79,13 @@ export function requireUser(sessions: Sessions) {
 }
 
 export interface LoginLimit {
-  /** failed attempts allowed per username and address within the window. */
   maxFailures: number;
   windowMs: number;
 }
 
 const DEFAULT_LOGIN_LIMIT: LoginLimit = { maxFailures: 5, windowMs: 60_000 };
 
-/**
- * counts failed sign-ins so nobody can sit and guess passwords. the counts are kept in memory,
- * which is enough for one api process; several processes would need to share them.
- */
+// stop people guessing passwords; kept in memory for one api process
 function createFailureLimiter({ maxFailures, windowMs }: LoginLimit) {
   const failures = new Map<string, { count: number; resetAt: number }>();
   return {
@@ -122,7 +116,7 @@ function createFailureLimiter({ maxFailures, windowMs }: LoginLimit) {
   };
 }
 
-/** routes that work without a session. mount before `requireUser`. */
+// login works without a session already
 export function loginRouter(db: Db, sessions: Sessions, limit = DEFAULT_LOGIN_LIMIT) {
   const router = Router();
   const limiter = createFailureLimiter(limit);
@@ -146,8 +140,9 @@ export function loginRouter(db: Db, sessions: Sessions, limit = DEFAULT_LOGIN_LI
     }
 
     const user = findUser.get(name) as
-      { id: number; name: string; username: string; password_hash: string } | undefined;
-    // check a password even when the user doesn't exist, so both cases take the same time.
+      | { id: number; name: string; username: string; password_hash: string }
+      | undefined;
+    // always check a password so wrong user and wrong password take the same time
     const ok = await verifyPassword(password, user?.password_hash ?? DUMMY_HASH);
     if (!user || !ok) {
       limiter.fail(key);
@@ -166,7 +161,7 @@ export function loginRouter(db: Db, sessions: Sessions, limit = DEFAULT_LOGIN_LI
   return router;
 }
 
-/** routes for the signed-in user. mount after `requireUser`. */
+// routes that need a signed-in user
 export function accountRouter(db: Db, sessions: Sessions, hub: Hub) {
   const router = Router();
   const findUser = db.prepare('SELECT id, name, username FROM users WHERE id = ?');
@@ -177,8 +172,7 @@ export function accountRouter(db: Db, sessions: Sessions, hub: Hub) {
 
   router.post('/auth/logout', (req, res) => {
     sessions.revoke(req.sessionId);
-    // close this session's live connections too, so it stops getting updates and no longer
-    // counts as online.
+    // also close live sockets for this session
     hub.closeSession(req.sessionId);
     res.json({ ok: true });
   });

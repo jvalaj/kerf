@@ -1,16 +1,25 @@
 import express from 'express';
 
-import { requireUser } from './auth';
+import { accountRouter, type LoginLimit, loginRouter, requireUser, type Sessions } from './auth';
 import { type Db, resetDb } from './db';
+import type { Hub } from './hub';
+import { exportRouter } from './routes/export';
 import { feedRouter } from './routes/feed';
 import { measurementsRouter } from './routes/measurements';
 import { projectsRouter } from './routes/projects';
 
-export function createApp(db: Db) {
+export interface AppOptions {
+  loginLimit?: LoginLimit;
+  // only turn on /dev/reset while developing
+  devTools?: boolean;
+}
+
+export function createApp(db: Db, sessions: Sessions, hub: Hub, options: AppOptions = {}) {
+  const { devTools = process.env.NODE_ENV !== 'production' } = options;
   const app = express();
   app.use(express.json());
 
-  // The app calls the API from another origin (the Expo dev server on :8081).
+  // app and api run on different ports, so allow any origin (we use bearer tokens, not cookies)
   app.use((req, res, next) => {
     res.set('Access-Control-Allow-Origin', '*');
     res.set('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE');
@@ -18,6 +27,7 @@ export function createApp(db: Db) {
       'Access-Control-Allow-Headers',
       req.get('access-control-request-headers') ?? 'authorization, content-type',
     );
+    res.set('Access-Control-Expose-Headers', 'Content-Disposition');
     if (req.method === 'OPTIONS') {
       res.sendStatus(204);
       return;
@@ -29,20 +39,23 @@ export function createApp(db: Db) {
     res.json({ ok: true });
   });
 
-  app.use(requireUser(db));
+  app.use(loginRouter(db, sessions, options.loginLimit));
+  app.use(requireUser(sessions));
+  app.use(accountRouter(db, sessions, hub));
 
-  app.get('/me', (req, res) => {
-    res.json(db.prepare('SELECT id, name FROM users WHERE id = ?').get(req.userId));
-  });
-
-  app.post('/dev/reset', (_req, res) => {
-    resetDb(db);
-    res.json({ ok: true });
-  });
+  if (devTools) {
+    app.post('/dev/reset', (_req, res) => {
+      resetDb(db);
+      // dashboards may be holding old rows; send them fresh data
+      hub.resyncAll();
+      res.json({ ok: true });
+    });
+  }
 
   app.use(projectsRouter(db));
-  app.use(measurementsRouter(db));
-  app.use(feedRouter(db));
+  app.use(measurementsRouter(db, hub));
+  app.use(feedRouter(hub));
+  app.use(exportRouter(db));
 
   return app;
 }

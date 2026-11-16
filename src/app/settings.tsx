@@ -9,12 +9,14 @@ import { ThemedText } from '@/components/themed-text';
 import { layout } from '@/constants/layout';
 import { Spacing } from '@/constants/theme';
 import { api } from '@/lib/api';
+import { useSession } from '@/lib/session';
 import { updateSettings, useSettings } from '@/lib/settings';
 
 const UNITS = Object.keys(UNIT_LABELS) as Unit[];
 
 export default function SettingsScreen() {
   const settings = useSettings();
+  const session = useSession();
   const [resetStatus, setResetStatus] = useState<string>();
 
   async function reset() {
@@ -37,6 +39,18 @@ export default function SettingsScreen() {
           onSelect={(unit) => updateSettings({ unit })}
         />
       </Card>
+
+      {session.status === 'signedIn' && (
+        <Card>
+          <ThemedText type="smallBold">Account</ThemedText>
+          <ThemedText type="small" themeColor="textSecondary">
+            Signed in as {session.user.name} ({session.user.username})
+          </ThemedText>
+          <View style={styles.action}>
+            <Button title="Sign out" onPress={() => api.signOut()} />
+          </View>
+        </Card>
+      )}
 
       <ThemedText type="small" themeColor="textSecondary" style={styles.heading}>
         DEVELOPER

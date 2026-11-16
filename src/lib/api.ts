@@ -1,14 +1,21 @@
-import type { FeedItem, Group, Measurement, NewMeasurement, Project } from '@kerf/shared';
+import type {
+  Group,
+  LoginResponse,
+  Measurement,
+  NewMeasurement,
+  Project,
+  Unit,
+} from '@kerf/shared';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 
-const TOKEN = 'alex-7f3c2a91';
+import { endSession, getToken, startSession } from '@/lib/session';
+
 const API_PORT = 4000;
 
-// The API runs on the same machine as the Expo dev server: the page's host on web, and the
-// dev server's host on a phone. EXPO_PUBLIC_API_URL overrides both.
-function apiUrl() {
-  if (process.env.EXPO_PUBLIC_API_URL) return process.env.EXPO_PUBLIC_API_URL;
+// same machine as expo: localhost in browser, computer wifi address on phone
+export function apiUrl() {
+  if (process.env.EXPO_PUBLIC_API_URL) return process.env.EXPO_PUBLIC_API_URL.replace(/\/$/, '');
   const host =
     Platform.OS === 'web'
       ? globalThis.location?.hostname
@@ -25,23 +32,49 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const res = await fetch(apiUrl() + path, {
-    ...init,
-    headers: {
-      authorization: `Bearer ${TOKEN}`,
-      'content-type': 'application/json',
-      ...init.headers,
-    },
-  });
+async function send(path: string, init: RequestInit = {}): Promise<Response> {
+  const token = getToken();
+  let res: Response;
+  try {
+    res = await fetch(apiUrl() + path, {
+      ...init,
+      headers: {
+        ...(token ? { authorization: `Bearer ${token}` } : {}),
+        'content-type': 'application/json',
+        ...init.headers,
+      },
+    });
+  } catch {
+    throw new ApiError(0, "Can't reach the server. Check your connection and try again.");
+  }
   if (!res.ok) {
+    // token is bad or signed out
+    if (res.status === 401 && token) endSession(token);
     const body = await res.json().catch(() => ({}));
     throw new ApiError(res.status, body.error ?? res.statusText);
   }
-  return res.json();
+  return res;
+}
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  return (await send(path, init)).json();
 }
 
 export const api = {
+  async signIn(username: string, password: string) {
+    startSession(
+      await request<LoginResponse>('/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ username, password }),
+      }),
+    );
+  },
+  async signOut() {
+    const token = getToken();
+    // remove session on server; still sign out here if that call fails
+    await send('/auth/logout', { method: 'POST' }).catch(() => {});
+    endSession(token);
+  },
   projects: () => request<Project[]>('/projects'),
   measurements: (projectId: number) => request<Group[]>(`/projects/${projectId}/measurements`),
   addMeasurement: (groupId: number, measurement: NewMeasurement) =>
@@ -49,6 +82,7 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(measurement),
     }),
-  feed: () => request<FeedItem[]>('/feed'),
+  exportCsv: (unit: Unit, timeZone: string) =>
+    send(`/export/measurements.csv?unit=${unit}&tz=${encodeURIComponent(timeZone)}`),
   reset: () => request<{ ok: true }>('/dev/reset', { method: 'POST' }),
 };

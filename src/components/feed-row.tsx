@@ -18,7 +18,7 @@ export function FeedRow({ item, unit }: { item: FeedItem; unit: Unit }) {
         <View style={styles.main}>
           <ThemedText numberOfLines={1}>{item.label}</ThemedText>
           <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
-            {item.projectName} · {item.groupName} · {item.deviceId}
+            {item.projectName} · {item.groupName} · {item.createdByName} · {item.deviceId}
           </ThemedText>
         </View>
         <View style={styles.side}>
