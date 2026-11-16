@@ -7,6 +7,15 @@ export interface User {
   name: string;
 }
 
+export interface AuthUser extends User {
+  username: string;
+}
+
+export interface LoginResponse {
+  token: string;
+  user: AuthUser;
+}
+
 export interface Project {
   id: number;
   name: string;
@@ -40,4 +49,5 @@ export interface FeedItem extends Measurement {
   projectId: number;
   projectName: string;
   groupName: string;
+  createdByName: string;
 }

@@ -1,9 +1,13 @@
 import type { DatabaseSync } from 'node:sqlite';
 
+import { hashPasswordSync } from './passwords';
+
+// demo accounts. the passwords are development seed data, documented in the readme; they are
+// stored hashed like any other password.
 export const USERS = [
-  { name: 'Alex', token: 'alex-7f3c2a91' },
-  { name: 'Sam', token: 'sam-4b8e10d6' },
-  { name: 'Priya', token: 'priya-2d9e5b07' },
+  { name: 'Alex', username: 'alex', password: 'kerf-alex-1' },
+  { name: 'Sam', username: 'sam', password: 'kerf-sam-2' },
+  { name: 'Priya', username: 'priya', password: 'kerf-priya-3' },
 ];
 
 type SeedGroup = { name: string; readings: [string, number][] };
@@ -128,8 +132,18 @@ const PROJECTS: SeedProject[] = [
 const DEVICES = ['TP-3F2A', 'TP-91C4'];
 const DAY = 24 * 60 * 60 * 1000;
 
-export function seed(db: DatabaseSync) {
-  const insertUser = db.prepare('INSERT INTO users (name, token) VALUES (?, ?)');
+// users and projects are seeded separately so that "reset seed data" can restore the projects
+// without deleting the users, which would sign everybody out.
+export function seedUsers(db: DatabaseSync) {
+  const insertUser = db.prepare(
+    'INSERT INTO users (name, username, password_hash) VALUES (?, ?, ?)',
+  );
+  for (const user of USERS) {
+    insertUser.run(user.name, user.username, hashPasswordSync(user.password));
+  }
+}
+
+export function seedProjects(db: DatabaseSync) {
   const insertProject = db.prepare('INSERT INTO projects (name, owner_id) VALUES (?, ?)');
   const insertMember = db.prepare(
     'INSERT INTO project_members (project_id, user_id) VALUES (?, ?)',
@@ -139,10 +153,6 @@ export function seed(db: DatabaseSync) {
     `INSERT INTO measurements (group_id, value, label, device_id, created_at, created_by)
      VALUES (?, ?, ?, ?, ?, ?)`,
   );
-
-  for (const user of USERS) {
-    insertUser.run(user.name, user.token);
-  }
 
   let createdAt = Date.now() - 14 * DAY;
   for (const project of PROJECTS) {
