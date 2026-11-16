@@ -2,8 +2,7 @@ import type { DatabaseSync } from 'node:sqlite';
 
 import { hashPasswordSync } from './passwords';
 
-// demo accounts. the passwords are development seed data, documented in the readme; they are
-// stored hashed like any other password.
+// demo users for local testing (passwords are in the readme)
 export const USERS = [
   { name: 'Alex', username: 'alex', password: 'kerf-alex-1' },
   { name: 'Sam', username: 'sam', password: 'kerf-sam-2' },
@@ -132,8 +131,7 @@ const PROJECTS: SeedProject[] = [
 const DEVICES = ['TP-3F2A', 'TP-91C4'];
 const DAY = 24 * 60 * 60 * 1000;
 
-// users and projects are seeded separately so that "reset seed data" can restore the projects
-// without deleting the users, which would sign everybody out.
+// users and projects are separate so reset can restore projects without signing people out
 export function seedUsers(db: DatabaseSync) {
   const insertUser = db.prepare(
     'INSERT INTO users (name, username, password_hash) VALUES (?, ?, ?)',

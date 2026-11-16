@@ -21,7 +21,7 @@ export default function SignInScreen() {
     setBusy(true);
     setError(undefined);
     try {
-      // on success the session changes and the root layout swaps this screen for the app.
+      // layout switches to the app after a good login
       await api.signIn(username, password);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));

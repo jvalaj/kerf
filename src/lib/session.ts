@@ -8,8 +8,7 @@ export type Session =
   | { status: 'signedOut' }
   | { status: 'signedIn'; token: string; user: AuthUser };
 
-// starts as 'loading' on the server render and on the client alike; the stored session is read
-// afterwards.
+// start as loading until we read any saved login
 const LOADING: Session = { status: 'loading' };
 
 let session: Session = LOADING;
@@ -42,10 +41,7 @@ export function startSession(login: LoginResponse) {
   tokenStorage.save(JSON.stringify(login)).catch(() => {});
 }
 
-/**
- * forgets the session on this device. pass the token that was rejected so a late 401 from an old
- * request can't sign out a session that started since.
- */
+// clear login on this device; ignore late 401s from an old token
 export function endSession(token?: string) {
   if (token !== undefined && token !== getToken()) return;
   set({ status: 'signedOut' });

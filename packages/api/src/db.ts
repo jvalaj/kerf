@@ -5,8 +5,7 @@ import { seedProjects, seedUsers } from './seed';
 
 export type Db = DatabaseSync;
 
-// bump when the schema changes. there are no migrations yet: this is development data, so a
-// database from an older version is rebuilt from the seed (see opendb).
+// raise this when the schema changes; old db files get rebuilt from seed
 const SCHEMA_VERSION = 2;
 
 const SCHEMA = `
@@ -32,7 +31,6 @@ const SCHEMA = `
     user_id INTEGER NOT NULL REFERENCES users(id),
     PRIMARY KEY (project_id, user_id)
   );
-  -- almost every query starts from "which projects is this user in", so index that lookup.
   CREATE INDEX IF NOT EXISTS project_members_user ON project_members(user_id);
   CREATE TABLE IF NOT EXISTS measurement_groups (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -66,7 +64,7 @@ const ALL_TABLES = [
   'users',
   'meta',
 ];
-// reset keeps users and sessions, so resetting the demo data doesn't sign everyone out.
+// reset only clears projects; users stay signed in
 const PROJECT_TABLES = ['measurements', 'measurement_groups', 'project_members', 'projects'];
 
 function newEpoch(db: Db) {
@@ -76,11 +74,7 @@ function newEpoch(db: Db) {
   ).run(randomUUID());
 }
 
-/**
- * a random label for the current run of measurement ids. it changes whenever ids start again
- * from 1 (after a reset). a dashboard remembers the id of the last measurement it saw; when the
- * label has changed, that id is from the old run and the dashboard must start fresh.
- */
+// random label for this set of measurement ids; changes after a reset
 export function getEpoch(db: Db): string {
   return (db.prepare(`SELECT value FROM meta WHERE key = 'epoch'`).get() as { value: string })
     .value;
@@ -95,8 +89,7 @@ export function openDb(path: string): Db {
   const hasTables = !!db
     .prepare(`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'users'`)
     .get();
-  // fix: `CREATE TABLE IF NOT EXISTS` never changes a table that already exists, so a database
-  // from before sign-in was added would keep its old columns and the api would crash on it.
+  // old db files do not get new columns from CREATE IF NOT EXISTS, so rebuild them
   if (hasTables && version !== SCHEMA_VERSION) {
     console.warn(`Database schema is out of date (v${version}); rebuilding it from the seed data.`);
     for (const table of ALL_TABLES) {
@@ -125,8 +118,6 @@ export function openDb(path: string): Db {
 }
 
 export function resetDb(db: Db) {
-  // fix: a failure half-way used to leave the transaction open and the data half deleted. now
-  // it is rolled back, so a reset either fully happens or doesn't happen at all.
   db.exec('BEGIN');
   try {
     for (const table of PROJECT_TABLES) {
@@ -134,7 +125,7 @@ export function resetDb(db: Db) {
       db.prepare('DELETE FROM sqlite_sequence WHERE name = ?').run(table);
     }
     seedProjects(db);
-    // ids start again from 1, so any "last id i saw" that a dashboard is holding is now wrong.
+    // ids start from 1 again after reset
     newEpoch(db);
     db.exec('COMMIT');
   } catch (err) {

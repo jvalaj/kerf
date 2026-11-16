@@ -1,6 +1,6 @@
 import * as SecureStore from 'expo-secure-store';
 
-// on a phone the session lives in the keychain / keystore.
+// phone: keep the session in the keychain / keystore
 const KEY = 'kerf.session';
 
 export const tokenStorage = {

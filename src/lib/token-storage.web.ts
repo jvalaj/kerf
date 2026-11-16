@@ -1,11 +1,8 @@
-// a browser has no keychain. localstorage keeps people signed in across reloads and tabs; the
-// trade-off is that script running on this origin could read the token. the alternative, an
-// httponly cookie, would need the api on the same site as the app plus csrf protection, and
-// phones and api clients would still need bearer tokens.
+// browser has no keychain, so we use localStorage to stay signed in
 const KEY = 'kerf.session';
 
 function storage() {
-  // undefined while the page is rendered on the server.
+  // no localStorage during server render
   return typeof localStorage === 'undefined' ? undefined : localStorage;
 }
 

@@ -42,35 +42,52 @@ browser works without any of this.
 
 ### Other scripts
 
-| Command          | What it does                       |
-| ---------------- | ---------------------------------- |
-| `yarn dev:api`   | API only (restarts on change)      |
-| `yarn dev:app`   | Expo dev server only               |
-| `yarn test`      | Vitest (there are no tests yet)    |
-| `yarn typecheck` | TypeScript for the app and the API |
-| `yarn lint`      | ESLint                             |
+| Command          | What it does                         |
+| ---------------- | ------------------------------------ |
+| `yarn dev:api`   | API only (restarts on change)        |
+| `yarn dev:app`   | Expo dev server only                 |
+| `yarn test`      | Vitest: API and shared-package tests |
+| `yarn typecheck` | TypeScript for the app and the API   |
+| `yarn lint`      | ESLint                               |
 
 To add a dependency to the app, use `npx expo install <package>` so you get a version that matches
 the Expo SDK.
 
 ### Users and data
 
-There's no login. Three users are seeded, each with a fixed bearer token:
+Each person signs in with a username and password. Three demo users are seeded:
 
-| User  | Token            | Projects                                                     |
-| ----- | ---------------- | ------------------------------------------------------------ |
-| Alex  | `alex-7f3c2a91`  | Hendricks Kitchen Remodel, Unit 4B Flooring, Garage Shelving |
-| Priya | `priya-2d9e5b07` | Hendricks Kitchen Remodel (as a subcontractor)               |
-| Sam   | `sam-4b8e10d6`   | Maple St Deck                                                |
+| User  | Username | Password       | Projects                                                     |
+| ----- | -------- | -------------- | ------------------------------------------------------------ |
+| Alex  | `alex`   | `kerf-alex-1`  | Hendricks Kitchen Remodel, Unit 4B Flooring, Garage Shelving |
+| Priya | `priya`  | `kerf-priya-3` | Hendricks Kitchen Remodel (as a subcontractor)               |
+| Sam   | `sam`    | `kerf-sam-2`   | Maple St Deck                                                |
 
-The app always acts as Alex. You can call the API directly, for example:
+These are demo passwords for local development only. They live in `packages/api/src/seed.ts` and
+are stored hashed, like any other password.
+
+You stay signed in until you choose **Settings → Sign out**. To be two people at once on one
+computer, use a second browser or a private window: tabs of the same browser share a sign-in.
+
+To call the API directly, sign in to get a token and send it as a bearer token:
 
 ```bash
-curl -H "Authorization: Bearer alex-7f3c2a91" http://localhost:4000/projects
+TOKEN=$(curl -s http://localhost:4000/auth/login -H 'content-type: application/json' \
+  -d '{"username":"alex","password":"kerf-alex-1"}' | node -pe 'JSON.parse(require("fs").readFileSync(0)).token')
+curl -H "Authorization: Bearer $TOKEN" http://localhost:4000/projects
 ```
 
+| Endpoint                                 | What it does                                                       |
+| ---------------------------------------- | ------------------------------------------------------------------ |
+| `POST /auth/login`                       | Username and password in, session token out                        |
+| `POST /auth/logout`                      | Ends that session everywhere it is used                            |
+| `POST /groups/:id/measurements`          | Logs a measurement. It shows up live on every dashboard            |
+| `GET /export/measurements.csv?unit=&tz=` | CSV of your projects. `unit`: `fractional`, `decimal`, `metric`    |
+| `ws://localhost:4000/live`               | Live measurements and who's online (`packages/shared/src/live.ts`) |
+
 The database lives at `packages/api/data/kerf.db` and is created and seeded on first run. To get
-back to the seed data, use **Settings → Reset seed data** in the app, or delete that file.
+back to the seed data, use **Settings → Reset seed data** in the app, or delete that file. A
+database file from before sign-in was added is rebuilt from the seed data automatically.
 
 ## Where the product is headed
 
